@@ -1,0 +1,135 @@
+DEBUT(LANG='FR')
+
+
+mesh = LIRE_MAILLAGE(FORMAT='MED',
+                     UNITE=20)
+
+model = AFFE_MODELE(AFFE=_F(GROUP_MA=('Shape', 'Solid'),
+                            MODELISATION='DKT',
+                            PHENOMENE='MECANIQUE'),
+                    MAILLAGE=mesh)
+
+elemprop = AFFE_CARA_ELEM(COQUE=_F(EPAIS=1.0,
+                                   GROUP_MA=('Solid', )),
+                          MODELE=model)
+
+fake_rho = 1000
+mater = DEFI_MATERIAU(ELAS=_F(E=100e9,
+                              NU=0.0,
+                              RHO=fake_rho))
+
+fieldmat = AFFE_MATERIAU(AFFE=_F(GROUP_MA=('Shape', 'Solid'),
+                                 MATER=(mater, )),
+                         MODELE=model)
+
+load = AFFE_CHAR_MECA(DDL_IMPO=_F(DRX=0, DRY=0, DRZ=0,
+                                  DX=0, DY=0, DZ=0,
+                                  GROUP_MA=('Shape'),),
+                      MODELE=model)
+
+ASSEMBLAGE(CARA_ELEM=elemprop,
+           CHAM_MATER=fieldmat,
+           CHARGE=(load, ),
+           MATR_ASSE=(_F(MATRICE=CO('K_MAT'),
+                         OPTION='RIGI_MECA'),
+                      _F(MATRICE=CO('M_MAT'),
+                         OPTION='MASS_MECA')),
+           MODELE=model,
+           NUME_DDL=CO('NUM_DDL'))
+
+modes0 = CALC_MODES(CALC_FREQ=_F(NMAX_FREQ=1),
+                    MATR_MASS=M_MAT,
+                    MATR_RIGI=K_MAT,
+                    OPTION='PLUS_PETITE',
+                    VERI_MODE=_F(STOP_ERREUR='NON'))
+
+
+fieldx = CREA_CHAMP(AFFE=_F(GROUP_MA=('Shape', 'Solid'),
+                            NOM_CMP=('DX', 'DY', 'DZ', 'DRX', 'DRY', 'DRZ'),
+                            VALE=(1.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
+                    MODELE=model,
+                    NUME_DDL=NUM_DDL,
+                    OPERATION='AFFE',
+                    TYPE_CHAM='NOEU_DEPL_R')
+
+fieldy = CREA_CHAMP(AFFE=_F(GROUP_MA=('Shape', 'Solid'),
+                            NOM_CMP=('DX', 'DY', 'DZ', 'DRX', 'DRY', 'DRZ'),
+                            VALE=(0.0, 1.0, 0.0, 0.0, 0.0, 0.0)),
+                    MODELE=model,
+                    NUME_DDL=NUM_DDL,
+                    OPERATION='AFFE',
+                    TYPE_CHAM='NOEU_DEPL_R')
+
+modes0 = CREA_RESU(reuse=modes0,
+                   AFFE=(_F(CARA_ELEM=elemprop,
+                            CHAM_GD=fieldx,
+                            CHAM_MATER=fieldmat,
+                            FREQ=0.0,
+                            MODELE=model,
+                            NUME_MODE=2),
+                         _F(CARA_ELEM=elemprop,
+                            CHAM_GD=fieldy,
+                            CHAM_MATER=fieldmat,
+                            FREQ=0.0,
+                            MODELE=model,
+                            NUME_MODE=3)),
+                   MATR_MASS=M_MAT,
+                   MATR_RIGI=K_MAT,
+                   NOM_CHAM='DEPL',
+                   OPERATION='AFFE',
+                   RESULTAT=modes0,
+                   TYPE_RESU='MODE_MECA')
+
+
+modes = EXTR_MODE(FILTRE_MODE=_F(MODE=modes0,
+                                 NUME_MODE=(2, 3)))
+
+# IMPR_RESU(FORMAT='MED',
+#           RESU=_F(RESULTAT=modes0,
+#                   TOUT_ORDRE='OUI'),
+#           UNITE=80)
+
+number0 = NUME_DDL_GENE(BASE=modes,
+                        STOCKAGE='PLEIN')                   
+                   
+MACRO_MATR_AJOU(AVEC_MODE_STAT='NON',
+                DDL_IMPO=_F(GROUP_NO=('Boundary', ),
+                            PRES_FLUIDE=0.0),
+                FLUIDE=_F(GROUP_MA=('Fluid', ),
+                          RHO=1.0),
+                GROUP_MA_FLUIDE=('Fluid', ),
+                GROUP_MA_INTERF=('Shape', ),
+                MAILLAGE=mesh,
+                MATR_MASS_AJOU=CO('MAJOU_AUTO'),
+                MODELISATION='PLAN',
+                MODE_MECA=modes,
+                NOEUD_DOUBLE='OUI',
+                NUME_DDL_GENE=number0)
+
+MASS = POST_ELEM(MODELE=model, CHAM_MATER=fieldmat,
+                   MASS_INER=_F(TOUT="OUI"),
+                   CARA_ELEM=elemprop)
+
+
+import os
+import numpy as np
+osp = os.path
+
+# Extract the added mass matrix to a numpy array
+surface = MASS['MASSE', 1]/fake_rho
+
+adim_mass = MAJOU_AUTO.EXTR_MATR()/surface
+
+# Write added mass matrix to csv file
+# Here we should use a templating option to set the result file path auto*magically*
+output_path = '<OUTPUT/PATH>'
+np.savetxt(output_path, adim_mass, delimiter=' ')
+
+# Print out information in the terminal
+print('*'*100)
+print(f'Surface = {surface}')
+print('Added mass matrix (auto) : ')
+print(adim_mass)
+print('*'*100)
+
+FIN()

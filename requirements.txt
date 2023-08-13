@@ -1,0 +1,8 @@
+inspect
+matplotlib
+numpy
+pathlib
+Pillow
+scipy
+salome
+asterstudy
