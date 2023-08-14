@@ -19,3 +19,7 @@ python generate_dataset.py
 Step 2 : Calculate the added masses using Code_Aster (requires Salome Meca)
 
 python calculate.py
+
+Step 3 : Train the model to fit to the calculated reference data
+
+python train.py

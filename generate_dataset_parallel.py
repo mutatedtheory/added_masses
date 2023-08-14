@@ -7,7 +7,7 @@
 # -----------------------------------------------------------------------------
 # Credits/Copyright:
 # - Hassan BERRO <hassan.berro@edf.fr>
-# - Charbel HABCHI <charbel.habchi@gmail.com>
+# - Charbel HABCHI <habchi.charbel@gmail.com>
 # -----------------------------------------------------------------------------
 #
 # Usage:
@@ -268,11 +268,11 @@ if __name__ == '__main__':
         done_text = str(done).rjust(len(str(DATASET_SIZE)))
         perc_text = f'{100*ratio:04.1f}'.rjust(5)
 
-        per_shape = f'{elapsed/done:.2f}s' \
+        per_shape = f'{1000*elapsed/done:d}ms' \
                     if done > 0 else '-'.center(5)
 
         ut.print_(' ', f'[{perc_text}%] {done_text}/{DATASET_SIZE} generated'\
-                 f' | Per-Shape: {per_shape} | Remaining: {remaining}  ', end='\r')
+                 f' | {per_shape}/shape | ETA: {remaining}  ', end='\r')
 
         time.sleep(sleep)
 

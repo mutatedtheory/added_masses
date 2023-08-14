@@ -7,7 +7,7 @@
 # -----------------------------------------------------------------------------
 # Credits/Copyright:
 # - Hassan BERRO <hassan.berro@edf.fr>
-# - Charbel HABCHI <charbel.habchi@gmail.com>
+# - Charbel HABCHI <habchi.charbel@gmail.com>
 # -----------------------------------------------------------------------------
 #
 # Usage:
