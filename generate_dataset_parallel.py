@@ -13,13 +13,17 @@
 # Usage:
 # ------
 #
-# python generate_dataset.py
+# python generate_dataset_parallel.py
 #
 # -----------------------------------------------------------------------------
 
 
+import multiprocessing as mp
 import os
+import threading
+import time
 import traceback
+from functools import partial
 
 import numpy as np
 import resources.utilities as ut
@@ -31,10 +35,12 @@ osp = os.path
 #-------------------------------#
 
 ut.DEBUG     = False  # Activate/Deactivate Debug messages
-DATASET_ID   = None   # If None, a dataset id is automatically generated
+DATASET_ID   = 'C'    # If None, a dataset id is automatically generated
 
 DATASET_SIZE = 10000  # Number of shapes to be generated in the dataset
-DATASET_START = 0     # Dataset starts then at (DATASET_START + 1)
+DATASET_START = 30000 # Dataset starts then at (DATASET_START + 1)
+
+NB_CPU = 40           # Number of processors to use for the dataset generation
 
 if ut.DEBUG:
     DATASET_SIZE = 10     # Number of shapes to be generated in the dataset
@@ -99,6 +105,98 @@ def initialize():
 
     return points_dir, images_dir
 
+def generate(start, end, points_dir, images_dir, verbose=True):
+    """
+    Actual generation script with start and end indices
+    """
+
+    for idx in range(start, end):
+
+        sid = f'shape_{idx+1:05d}'
+        if verbose:
+            ut.print_('info', sid)
+
+        npts = SHAPE_NPTS if not callable(SHAPE_NPTS) \
+               else SHAPE_NPTS()
+        radius = [SHAPE_RADIUS]*npts if not callable(SHAPE_RADIUS) \
+                 else SHAPE_RADIUS(npts)
+        edgy = [SHAPE_EDGY]*npts if not callable(SHAPE_EDGY) \
+                else SHAPE_EDGY(npts)
+
+        shape = Shape(sid, npts, SAMPLING_PTS, radius, edgy)
+
+        shape.generate(xmin=xmin, xmax=xmax,
+                       ymin=ymin, ymax=ymax,
+                       magnify=SHAPE_SCALE)
+
+        csv_fn = osp.join(points_dir, f'{sid}.csv')
+        np.savetxt(csv_fn, shape.curve_pts, delimiter=' ')
+        if verbose:
+            ut.print_ok('CSV') if osp.isfile(csv_fn) else ut.print_nook('CSV')
+
+        png_fn = osp.join(images_dir, f'{sid}.png')
+
+        with ut.suppress_stdout_stderr():
+            shape.generate_image(png_fn,
+                                 xmin=xmin, xmax=xmax,
+                                 ymin=ymin, ymax=ymax,
+                                 plot_pts=False, show_quadrants=False)
+        if verbose:
+            ut.print_ok('PNG') if osp.isfile(png_fn) else ut.print_nook('PNG')
+
+class MPHandler:
+    """
+    Simple parallel processing handler that keeps a reference to running
+    processes and is able to start them and tell if they are all done.
+    """
+
+    processes = None
+
+    def __init__(self):
+        """
+        Initialize an empty list of processes
+        """
+        self.processes = []
+
+    @property
+    def number(self):
+        """
+        Returns the number of handled processes
+        """
+        return len(self.processes)
+
+    def add(self, callback):
+        """
+        Append a new process to the hanlded list
+        """
+        process = mp.Process(None, callback, f'Thread [{self.number}]')
+        self.processes.append(process)
+
+    def start_all(self):
+        """
+        Start all processes at once
+        """
+        for process in self.processes:
+            process.daemon = True
+            process.start()
+
+    def all_done(self):
+        """
+        Check if all referenced processes are finished while removing
+        references to finished ones.
+        """
+        output = True
+        for ith in range(self.number):
+            if self.processes[ith] is None:
+                continue
+
+            if not self.processes[ith].is_alive():
+                self.processes[ith] = None
+            else:
+                output = False
+
+        return output
+
 
 if __name__ == '__main__':
     """
@@ -129,35 +227,28 @@ if __name__ == '__main__':
     points_dir, images_dir = dirpaths
 
     # Generates shapes
-    ut.print_('info', f'Generating {DATASET_SIZE} shapes...', 'bold')
+    ut.print_('info', f'Generating {DATASET_SIZE} shapes on {NB_CPU} procs.', 'bold')
 
-    for idx in range(DATASET_START, DATASET_START+DATASET_SIZE):
+    # Distribute the output distribution among the processors
+    bunch = DATASET_SIZE//NB_CPU
+    cuts = list(range(DATASET_START, DATASET_START+DATASET_SIZE, bunch))[:NB_CPU]
+    cuts.append(DATASET_START+DATASET_SIZE)
 
-        sid = f'shape_{idx+1:05d}'
-        ut.print_('info', sid)
+    mp_handler = MPHandler()
+    for icpu in range(NB_CPU):
+        start, end = cuts[icpu:icpu+2]
+        mp_handler.add(partial(generate, start, end, points_dir, images_dir, False))
 
-        npts = SHAPE_NPTS if not callable(SHAPE_NPTS) \
-               else SHAPE_NPTS()
-        radius = [SHAPE_RADIUS]*npts if not callable(SHAPE_RADIUS) \
-                 else SHAPE_RADIUS(npts)
-        edgy = [SHAPE_EDGY]*npts if not callable(SHAPE_EDGY) \
-                else SHAPE_EDGY(npts)
+    mp_handler.start_all()
+    tref = time.time()
 
-        shape = Shape(sid, npts, SAMPLING_PTS, radius, edgy)
+    # Wait for all threads are done before exiting
+    while not mp_handler.all_done():
+        done = len(os.listdir(images_dir))
+        ratio = done/DATASET_SIZE
+        elapsed = time.time()-tref
+        remaining = f'{-elapsed + elapsed/ratio:.1f} s' if ratio > 0.005 else '...'
 
-        shape.generate(xmin=xmin, xmax=xmax,
-                       ymin=ymin, ymax=ymax,
-                       magnify=SHAPE_SCALE)
-
-        csv_fn = osp.join(points_dir, f'{sid}.csv')
-        np.savetxt(csv_fn, shape.curve_pts, delimiter=' ')
-        ut.print_ok('CSV') if osp.isfile(csv_fn) else ut.print_nook('CSV')
-
-        png_fn = osp.join(images_dir, f'{sid}.png')
-
-        with ut.suppress_stdout_stderr():
-            shape.generate_image(png_fn,
-                                 xmin=xmin, xmax=xmax,
-                                 ymin=ymin, ymax=ymax,
-                                 plot_pts=False, show_quadrants=False)
-        ut.print_ok('PNG') if osp.isfile(png_fn) else ut.print_nook('PNG')
+        ut.print_('info', f'Progress : {done} shapes [{100*ratio:.1f}%] ; Remaining : {remaining}')
+        time.sleep(1)
+    ut.print_ok('Generation is complete with {DATASET_SIZE} shapes')

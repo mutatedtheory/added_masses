@@ -22,6 +22,7 @@
 # -----------------------------------------------------------------------------
 
 import os
+import shutil
 import stat
 import time
 import traceback
@@ -243,12 +244,13 @@ class SalomeMecaRunner:
         # --------------------------------------------------------------
         # Extra : create a global script for running all calculations
         # using the run_aster script. Note that this is not needed if
-        # calculations are run using this class (run=True)
+        # calculations are run using this class (run=True) and is thus
+        # only generated in debug mode...
         # --------------------------------------------------------------
-
-        runner_fn = osp.join(self.output_dir, 'runner.sh')
-        with open(runner_fn, 'w') as rf:
-            rf.write(r"""
+        if ut.DEBUG:
+            runner_fn = osp.join(self.output_dir, 'runner.sh')
+            with open(runner_fn, 'w') as rf:
+                rf.write(r"""
 #!/bin/bash
 # ----------------------------------------------------------------------
 # Runs all calculations using run_aster
@@ -275,8 +277,8 @@ find $prefix -name export -exec run_aster {} \;
 # > grep Added */message.txt -A 3 -B 2
 """.lstrip())
 
-        st = os.stat(runner_fn)
-        os.chmod(runner_fn, st.st_mode | stat.S_IEXEC)
+            st = os.stat(runner_fn)
+            os.chmod(runner_fn, st.st_mode | stat.S_IEXEC)
 
 
     def run(self, sid):
@@ -453,6 +455,10 @@ find $prefix -name export -exec run_aster {} \;
             ut.print_ok('Code_Aster export file')
             ut.print_('debug', export_fn)
 
+        # Rename original .csv as .csv_ so as a way to indicate that
+        # it has been treated and thus skipped in subsequent runs.
+        os.rename(path, f'{path}_')
+
         # -=-=-=-=-=- C O D E   A S T E R    R U N N E R  -=-=-=-=-=-
         #
         # Run added mass calculations using Code_Aster, interactively
@@ -496,6 +502,11 @@ find $prefix -name export -exec run_aster {} \;
                     ut.print_('resu', f'[{sid}] MX = {mx} | MY = {my} | MXY = {mxy}',
                               ('okgreen', 'bold'))
 
+                    # Remove the whole calculation folder if calculation is
+                    # successful, and if we are not in debug mode
+                    if ut.DEBUG is False:
+                        shutil.rmtree(out_dir)
+
 
 if __name__ == '__main__':
     """
@@ -504,7 +515,7 @@ if __name__ == '__main__':
     root = osp.join(osp.dirname(__file__), 'output')
 
     if DATASET_ID:
-        points_dir = osp.join(root, {DATASET_ID}, 'points')
+        points_dir = osp.join(root, DATASET_ID, 'points')
     else:
         # Automatically select the latest dataset directory if DATASET_ID
         # is not set (default).
