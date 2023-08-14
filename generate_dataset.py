@@ -19,6 +19,7 @@
 
 
 import os
+import time
 import traceback
 
 import numpy as np
@@ -30,19 +31,26 @@ osp = os.path
 # U S E R   P A R A M E T E R S #
 #-------------------------------#
 
-ut.DEBUG     = False  # Activate/Deactivate Debug messages
+ut.DEBUG     = True   # Activate/Deactivate Debug mode (messages and DS size)
 DATASET_ID   = None   # If None, a dataset id is automatically generated
 
 DATASET_SIZE = 10000  # Number of shapes to be generated in the dataset
-DATASET_START = 0     # Dataset starts then at (DATASET_START + 1)
+DATASET_START = 30000 # Dataset starts then at (DATASET_START + 1)
 
 if ut.DEBUG:
-    DATASET_SIZE = 10     # Number of shapes to be generated in the dataset
-    DATASET_START = 0     # Starting index for the dataset
+    ut.print_('info', '------------------------------------------------------------')
+    ut.print_('info', '    D E B U G     M O D E   I S    A C T I V A T E D', 'bold')
+    ut.print_('info', '------------------------------------------------------------')
+    ut.print_('info', 'In this mode the data set generated is limited to 100 shapes')
+    ut.print_('info', 'Set ut.Debug = False to use your own parameters')
+    ut.print_('info', '------------------------------------------------------------')
+    DATASET_SIZE = min(100, DATASET_SIZE)
+    DATASET_START = 0
 
 # -----------------------------------------------------------------------------
 
 BOX_DIMS     = [4., 4.]  # Image dimensions (DX, DY)
+IMAGE_RES    = 400       # Image resolution in pixels per unit
 SAMPLING_PTS = 40        # Number of Bezier sampling pts (higher = finer)
 
 # -----------------------------------------------------------------------------
@@ -76,7 +84,8 @@ def initialize():
     root = osp.join(osp.dirname(__file__), 'output')
 
     # Generate or use existing dataset ID
-    dataset_id = ut.new_dataset_id() if not DATASET_ID else DATASET_ID
+    dataset_id = ut.new_dataset_id(DATASET_START, DATASET_SIZE) \
+                 if not DATASET_ID else DATASET_ID
     dataset_dir = osp.join(root, dataset_id)
 
     # Generate the output points directory name
@@ -124,13 +133,15 @@ if __name__ == '__main__':
 
     xmin, xmax = -0.5*BOX_DIMS[0], 0.5*BOX_DIMS[0]
     ymin, ymax = -0.5*BOX_DIMS[1], 0.5*BOX_DIMS[1]
+    image_pixels = BOX_DIMS[0]*IMAGE_RES, BOX_DIMS[1]*IMAGE_RES
 
     # Retrieve paths handled in initialization
     points_dir, images_dir = dirpaths
 
+    tref = time.time()
+
     # Generates shapes
     ut.print_('info', f'Generating {DATASET_SIZE} shapes...', 'bold')
-
     for idx in range(DATASET_START, DATASET_START+DATASET_SIZE):
 
         sid = f'shape_{idx+1:05d}'
@@ -154,10 +165,9 @@ if __name__ == '__main__':
         ut.print_ok('CSV') if osp.isfile(csv_fn) else ut.print_nook('CSV')
 
         png_fn = osp.join(images_dir, f'{sid}.png')
+        shape.generate_image(png_fn, *image_pixels)
 
-        with ut.suppress_stdout_stderr():
-            shape.generate_image(png_fn,
-                                 xmin=xmin, xmax=xmax,
-                                 ymin=ymin, ymax=ymax,
-                                 plot_pts=False, show_quadrants=False)
         ut.print_ok('PNG') if osp.isfile(png_fn) else ut.print_nook('PNG')
+
+    ut.print_ok(f'Generation is complete with {DATASET_SIZE} shapes')
+    ut.print_('info', f'Total elapsed: {int(time.time()-tref)} s', 'bold')

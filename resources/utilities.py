@@ -67,14 +67,14 @@ def to_list(*args):
             result.append(value)
     return [i for i in result if i is not None]
 
-def print_(mtype, message, tformat=None):
+def print_(mtype, message, tformat=None, **kwargs):
     """
     Print message to output with decoration and with adding a time stamp
     """
     # Handle list of messages
     if isinstance(message, (list, tuple)):
         for mm in message:
-            print_(mtype, mm, tformat)
+            print_(mtype, mm, tformat, **kwargs)
         return
 
     # Skip debug output ? (check global variable DEBUG)
@@ -93,7 +93,7 @@ def print_(mtype, message, tformat=None):
     mlines = [message] if len(mlines) <= 1 else mlines # This allows blank lines to be printed
     for mline in mlines:
         message_full = f'[ {mtype.upper().ljust(5)} |{tstamp}] {pf}{mline}{sf}'
-        print(message_full)
+        print(message_full, **kwargs)
 
 def print_nook(message):
     print_('error', f'[NOOK] {message}', ('bold', 'error'))
@@ -133,8 +133,14 @@ def list_files(root, ext):
     return list(pathlib.Path(root).glob(f'*.{ext}'))
 
 
-def new_dataset_id():
+def new_dataset_id(start, length):
     """
     Geneartes a dataset ID based on current date and time
     """
-    return f"dataset_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if DEBUG:
+        ds_id = f"DS_DEBUG"
+    else:
+        ds_id = f"DS_{start+1}_{start+length}"
+    ds_id = f"{ds_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    print_('info', f'Automatically generated ID : {ds_id}')
+    return ds_id

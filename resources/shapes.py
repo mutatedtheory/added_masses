@@ -5,8 +5,8 @@ import os
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import PIL
 import scipy.special
+from PIL import Image, ImageDraw
 
 osp = os.path
 
@@ -154,71 +154,23 @@ class Shape:
 
     ### ************************************************
     ### Write image
-    def generate_image(self, png_fn, *args, **kwargs):
-        # Handle optional argument
-        plot_pts       = kwargs.get('plot_pts',       False)
-        show_quadrants = kwargs.get('show_quadrants', False)
-        max_radius     = kwargs.get('max_radius',     1.0)
-        min_radius     = kwargs.get('min_radius',     0.2)
-        xmin           = kwargs.get('xmin',          -1.0)
-        xmax           = kwargs.get('xmax',           1.0)
-        ymin           = kwargs.get('ymin',          -1.0)
-        ymax           = kwargs.get('ymax',           1.0)
+    def generate_image(self, png_fn, dx, dy, zoom_factor=0.5):
+        """
+        Generate Image using the dx, dy image size in pixels
+        """
 
-        # Plot shape
-        plt.xlim([xmin,xmax])
-        plt.ylim([ymin,ymax])
-        plt.axis('off')
-        plt.gca().set_aspect('equal', adjustable='box')
-        plt.fill([xmin,xmax,xmax,xmin],
-                 [ymin,ymin,ymax,ymax],
-                 color=(0.784,0.773,0.741),
-                 linewidth=2.5,
-                 zorder=0)
-        plt.fill(self.curve_pts[:,0],
-                 self.curve_pts[:,1],
-                 'black',
-                 linewidth=0,
-                 zorder=1)
+        nbpts = len(self.curve_pts)
 
-        # Plot points
-        # Each point gets a different color
-        if (plot_pts):
-            colors = matplotlib.cm.ocean(np.linspace(0, 1, self.n_control_pts))
-            plt.scatter(self.control_pts[:,0],
-                        self.control_pts[:,1],
-                        color=colors,
-                        s=50,
-                        zorder=2,
-                        alpha=1.0)
+        # Y should be inversed because imaging software scans from top
+        # to bottom
+        delta = np.array([dx*np.ones(nbpts), -dy*np.ones(nbpts)]).transpose()
 
-        # Plot quadrants
-        if (show_quadrants):
-            for pt in range(self.n_control_pts):
-                dangle = (360.0/float(self.n_control_pts))
-                angle  = dangle*float(pt)+dangle/2.0
-                x_max  = max_radius*math.cos(math.radians(angle))
-                y_max  = max_radius*math.sin(math.radians(angle))
-                x_min  = min_radius*math.cos(math.radians(angle))
-                y_min  = min_radius*math.sin(math.radians(angle))
-                plt.plot([x_min, x_max],
-                         [y_min, y_max],
-                         color='w',
-                         linewidth=1)
+        coords = self.curve_pts[:, :2] * delta * zoom_factor
+        coords += [0.5*dx, 0.5*dy]
+        coords = [tuple(vv) for vv in coords.astype(int).tolist()]
 
-            circle = plt.Circle((0,0),max_radius,fill=False,color='w')
-            plt.gcf().gca().add_artist(circle)
-            circle = plt.Circle((0,0),min_radius,fill=False,color='w')
-            plt.gcf().gca().add_artist(circle)
+        draw_image(coords, (int(dx), int(dy)), png_fn)
 
-        # Save image
-        plt.gcf().tight_layout()
-        plt.savefig(png_fn,
-                    dpi=400,
-                    bbox_inches='tight')
-        plt.close(plt.gcf())
-        # plt.cla()
-        # trim_white(filename)
 
     ### ************************************************
     ### Write csv
@@ -579,12 +531,21 @@ def generate_bezier_curve(p1,       p2,
 
     return curve
 
-### Crop white background from image
-def trim_white(filename):
+def draw_image(coords, img_size, out_fn):
+    """
+    coords   : list of coordinates in 2D **pixels**
+    img_size : width, height in pixels
+    out_fn   : output file name
+    """
 
-    im   = PIL.Image.open(filename)
-    bg   = PIL.Image.new(im.mode, im.size, (255,255,255))
-    diff = PIL.ImageChops.difference(im, bg)
-    bbox = diff.getbbox()
-    cp   = im.crop(bbox)
-    cp.save(filename)
+    # Create a white background image
+    image = Image.new("RGB", img_size, "white")
+
+    # Create a drawing object
+    draw = ImageDraw.Draw(image)
+
+    # Draw the shape in black
+    draw.polygon(coords, outline="black", fill="black")
+
+    # Save the image
+    image.save(out_fn)

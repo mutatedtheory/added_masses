@@ -20,7 +20,6 @@
 
 import multiprocessing as mp
 import os
-import threading
 import time
 import traceback
 from functools import partial
@@ -34,21 +33,29 @@ osp = os.path
 # U S E R   P A R A M E T E R S #
 #-------------------------------#
 
-ut.DEBUG     = False  # Activate/Deactivate Debug messages
-DATASET_ID   = 'C'    # If None, a dataset id is automatically generated
+ut.DEBUG     = True   # Activate/Deactivate Debug mode (messages and DS size)
+DATASET_ID   = None   # If None, a dataset id is automatically generated
 
 DATASET_SIZE = 10000  # Number of shapes to be generated in the dataset
 DATASET_START = 30000 # Dataset starts then at (DATASET_START + 1)
 
-NB_CPU = 40           # Number of processors to use for the dataset generation
+NB_CPU = 1            # Number of processors to use for the dataset generation
+#                     # Recommended : 4 processors if your system can handle
 
 if ut.DEBUG:
-    DATASET_SIZE = 10     # Number of shapes to be generated in the dataset
-    DATASET_START = 0     # Starting index for the dataset
+    ut.print_('info', '------------------------------------------------------------')
+    ut.print_('info', '    D E B U G     M O D E   I S    A C T I V A T E D', 'bold')
+    ut.print_('info', '------------------------------------------------------------')
+    ut.print_('info', 'In this mode the data set generated is limited to 100 shapes')
+    ut.print_('info', 'Set ut.Debug = False to use your own parameters')
+    ut.print_('info', '------------------------------------------------------------')
+    DATASET_SIZE = min(100, DATASET_SIZE)
+    DATASET_START = 0
 
 # -----------------------------------------------------------------------------
 
 BOX_DIMS     = [4., 4.]  # Image dimensions (DX, DY)
+IMAGE_RES    = 400       # Image resolution in pixels per unit
 SAMPLING_PTS = 40        # Number of Bezier sampling pts (higher = finer)
 
 # -----------------------------------------------------------------------------
@@ -82,7 +89,8 @@ def initialize():
     root = osp.join(osp.dirname(__file__), 'output')
 
     # Generate or use existing dataset ID
-    dataset_id = ut.new_dataset_id() if not DATASET_ID else DATASET_ID
+    dataset_id = ut.new_dataset_id(DATASET_START, DATASET_SIZE) \
+                 if not DATASET_ID else DATASET_ID
     dataset_dir = osp.join(root, dataset_id)
 
     # Generate the output points directory name
@@ -109,6 +117,9 @@ def generate(start, end, points_dir, images_dir, verbose=True):
     """
     Actual generation script with start and end indices
     """
+    xmin, xmax = -0.5*BOX_DIMS[0], 0.5*BOX_DIMS[0]
+    ymin, ymax = -0.5*BOX_DIMS[1], 0.5*BOX_DIMS[1]
+    image_pixels = BOX_DIMS[0]*IMAGE_RES, BOX_DIMS[1]*IMAGE_RES
 
     for idx in range(start, end):
 
@@ -136,11 +147,8 @@ def generate(start, end, points_dir, images_dir, verbose=True):
 
         png_fn = osp.join(images_dir, f'{sid}.png')
 
-        with ut.suppress_stdout_stderr():
-            shape.generate_image(png_fn,
-                                 xmin=xmin, xmax=xmax,
-                                 ymin=ymin, ymax=ymax,
-                                 plot_pts=False, show_quadrants=False)
+        shape.generate_image(png_fn, *image_pixels)
+
         if verbose:
             ut.print_ok('PNG') if osp.isfile(png_fn) else ut.print_nook('PNG')
 
@@ -220,14 +228,20 @@ if __name__ == '__main__':
     import numpy as np
     from resources.shapes import Shape
 
-    xmin, xmax = -0.5*BOX_DIMS[0], 0.5*BOX_DIMS[0]
-    ymin, ymax = -0.5*BOX_DIMS[1], 0.5*BOX_DIMS[1]
-
     # Retrieve paths handled in initialization
     points_dir, images_dir = dirpaths
 
+    nbcores = mp.cpu_count()
+    if NB_CPU > nbcores:
+        ut.print_('warn', f'The number of processes requested ({NB_CPU}) '\
+                          f'exceeds the number of cores available ({nbcores}).')
+        ut.print_('info', 'The dataset generation will proceed at your own risk...')
+        ut.print_('info', 'Press Ctrl+C to Abort or wait 5 seconds', 'bold')
+        time.sleep(5)
+
     # Generates shapes
-    ut.print_('info', f'Generating {DATASET_SIZE} shapes on {NB_CPU} procs.', 'bold')
+    s = 's' if NB_CPU > 1 else ''
+    ut.print_('info', f'Generating {DATASET_SIZE} shapes on {NB_CPU} proc{s}', 'bold')
 
     # Distribute the output distribution among the processors
     bunch = DATASET_SIZE//NB_CPU
@@ -243,12 +257,25 @@ if __name__ == '__main__':
     tref = time.time()
 
     # Wait for all threads are done before exiting
+    sleep = min(4, 0.2 if ut.DEBUG else max(1, DATASET_SIZE/1000))
     while not mp_handler.all_done():
         done = len(os.listdir(images_dir))
         ratio = done/DATASET_SIZE
         elapsed = time.time()-tref
-        remaining = f'{-elapsed + elapsed/ratio:.1f} s' if ratio > 0.005 else '...'
+        remaining = f'{-elapsed + elapsed/ratio:.1f}s' \
+                    if ratio > 0.005 else '-'.center(5)
 
-        ut.print_('info', f'Progress : {done} shapes [{100*ratio:.1f}%] ; Remaining : {remaining}')
-        time.sleep(1)
-    ut.print_ok('Generation is complete with {DATASET_SIZE} shapes')
+        done_text = str(done).rjust(len(str(DATASET_SIZE)))
+        perc_text = f'{100*ratio:04.1f}'.rjust(5)
+
+        per_shape = f'{elapsed/done:.2f}s' \
+                    if done > 0 else '-'.center(5)
+
+        ut.print_(' ', f'[{perc_text}%] {done_text}/{DATASET_SIZE} generated'\
+                 f' | Per-Shape: {per_shape} | Remaining: {remaining}  ', end='\r')
+
+        time.sleep(sleep)
+
+    ut.print_(' ', '') # To avoid the last line being replaced...
+    ut.print_ok(f'Generation is complete with {DATASET_SIZE} shapes')
+    ut.print_('info', f'Total elapsed: {int(time.time()-tref)} s', 'bold')
