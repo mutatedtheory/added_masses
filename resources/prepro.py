@@ -49,8 +49,8 @@ def load_datasets(dataset_ids, img_size=(299, 299)):
         images.append(ds_images)
         values.append(ds_values)
 
-    images = np.rowstack(images)
-    values = np.rowstack(values)
+    images = np.row_stack(images)
+    values = np.row_stack(values)
 
     ut.print_ok('All datasets were loaded and concatenated')
     return images, values
